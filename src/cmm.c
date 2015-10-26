@@ -2,6 +2,11 @@
 #include <stdlib.h>
 #include <math.h>
 
+long cmm_version()
+{
+    return 10100;
+}
+
 typedef struct Node Node;
 void free_node(CMM_handle* cmm_handle, Node* node_ptr);
 void free_hash_table(CMM_handle* cmm_handle);
@@ -12,6 +17,8 @@ int get_one_free_node(CMM_handle* cmm_handle, Node** new_node);
 int register_memory(CMM_handle* cmm_handle, void* data,
         CMM_free_func free_func);
 size_t simple_hash(CMM_handle* cmm_handle, void* data);
+
+CMM_handle *cmm_handle_ptr_ = NULL;
 
 struct Node
 {
@@ -32,6 +39,49 @@ struct CMM_handle
     CMM_free_func free_func;
 };
 
+int CMM_Init(size_t buckets)
+{
+    if (cmm_handle_ptr_ != NULL)
+    {
+        CMM_Finalize();
+    }
+    cmm_handle_ptr_ = CMM_init(buckets);
+    if (cmm_handle_ptr_ == NULL)
+        return 1;
+    return 0;
+}
+
+void CMM_Finalize()
+{
+    CMM_finalize(cmm_handle_ptr_);
+    cmm_handle_ptr_ = NULL;
+}
+
+void* CMM_Malloc(size_t size)
+{
+    return CMM_malloc(cmm_handle_ptr_, size);
+}
+
+int CMM_Register_memory(void *data)
+{
+    return CMM_register_memory(cmm_handle_ptr_, data);
+}
+
+int CMM_Register_special_memory(void *data, CMM_free_func free_func)
+{
+    return CMM_register_special_memory(cmm_handle_ptr_, data, free_func);
+}
+
+void CMM_Set_free_func(CMM_free_func free_func)
+{
+    CMM_set_free_func(cmm_handle_ptr_, free_func);
+}
+
+int CMM_Free(void *data)
+{
+    return CMM_free(cmm_handle_ptr_, data);
+}
+
 CMM_handle* CMM_init(size_t buckets)
 {
     CMM_handle *cmm_handle = malloc(sizeof(CMM_handle));
@@ -40,7 +90,7 @@ CMM_handle* CMM_init(size_t buckets)
     cmm_handle->buckets = buckets;
     cmm_handle->hash_factor = sizeof(long double);
     cmm_handle->hash_func = simple_hash;
-    cmm_handle->mem = cmm_handle->mem_tail = make_chunk_nodes(buckets / 10);
+    cmm_handle->mem = cmm_handle->mem_tail = make_chunk_nodes(buckets/10);
     if (cmm_handle->mem == NULL)
         return NULL;
     cmm_handle->free_mem_stack = cmm_handle->mem->data;
@@ -54,13 +104,18 @@ CMM_handle* CMM_init(size_t buckets)
 
 void CMM_finalize(CMM_handle* cmm_handle)
 {
+    if (cmm_handle == NULL)
+        return;
     free_hash_table(cmm_handle);
     free_mem_chain(cmm_handle);
     free(cmm_handle);
+    cmm_handle = NULL;
 }
 
 void* CMM_malloc(CMM_handle *cmm_handle, size_t size)
 {
+    if (cmm_handle == NULL)
+        return NULL;
     void *data = malloc(size);
     if (data == NULL)
         return NULL;
@@ -82,11 +137,15 @@ int CMM_register_special_memory(CMM_handle *cmm_handle, void *data,
 
 void CMM_set_free_func(CMM_handle* cmm_handle, CMM_free_func free_func)
 {
+    if (cmm_handle == NULL)
+        return;
     cmm_handle->free_func = free_func;
 }
 
 int CMM_free(CMM_handle *cmm_handle, void *data)
 {
+    if (cmm_handle == NULL)
+        return 3;
     if (data == NULL)
         return 2;
     const size_t index = cmm_handle->hash_func(cmm_handle, data);
@@ -108,9 +167,11 @@ int CMM_free(CMM_handle *cmm_handle, void *data)
 }
 
 
-/* -------------------------------------------------------------------------- 
+/************************************************************************
+ *
  * private functions
- * -------------------------------------------------------------------------- */
+ *
+ ***********************************************************************/
 
 Node* make_chunk_nodes(size_t counts)
 {
@@ -205,6 +266,8 @@ int get_one_free_node(CMM_handle* cmm_handle, Node** new_node)
 int register_memory(CMM_handle* cmm_handle, void *data,
         CMM_free_func free_func)
 {
+    if (cmm_handle == NULL)
+        return 2;
     Node *new_node = NULL;
     int error_code = get_one_free_node(cmm_handle, &new_node);
     if (error_code)
